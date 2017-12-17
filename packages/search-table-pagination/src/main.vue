@@ -7,6 +7,7 @@
       ref="searchForm"
       :forms="formOptions.forms"
       :size="formOptions.size"
+      :fuzzy="formOptions.fuzzy"
       :inline="formOptions.inline"
       :label-width="formOptions.labelWidth"
       :item-width="formOptions.itemWidth"
@@ -21,6 +22,7 @@
     <slot />
 
     <el-table v-loading.lock="loading"
+      ref="table"
       :data="tableData"
       :border="border"
       :stripe="stripe"
@@ -57,7 +59,6 @@
       @filter-change="filters => emitEventHandler('filter-change', filters)"
       @current-change="(currentRow, oldCurrentRow) => emitEventHandler('current-change', currentRow, oldCurrentRow)"
       @header-dragend="(newWidth, oldWidth, column, event) => emitEventHandler('header-dragend', newWidth, oldWidth, column, event)"
-      @expand="(row, expanded) => emitEventHandler('expand', row, expanded)"
       @expand-change="(row, expanded) => emitEventHandler('expand-change', row, expanded)" >
 
       <slot name="prepend" />
@@ -152,7 +153,7 @@
     },
     computed: {
       newSlotScope() {
-        return Number(Vue.version.replace('.', '')) > 250
+        return Number(Vue.version.replace(/\./g, '')) >= 250
       }
     },
     methods: {
@@ -186,19 +187,24 @@
         const { cacheLocalData, params, pagination } = this
         const { pageIndex, pageSize } = pagination
         const mergeParams = Object.assign(params, formParams)
-        console.log('mergeParams: ', mergeParams)
         const validParamKeys = Object.keys(mergeParams).filter(v => {
           return mergeParams[v] !== undefined && mergeParams[v] !== ''
         })
-        console.log('ddd', validParamKeys)
+        const paramFuzzy = this.$refs['searchForm'].getParamFuzzy()
+
         if (validParamKeys.length > 0) {
           const validData = cacheLocalData.filter(v => {
             let valids = []
             validParamKeys.forEach(vv => {
               if (typeof v[vv] === 'number') {
-                valids.push(String(v[vv]) === String(mergeParams[vv]))
+                valids.push(
+                  paramFuzzy[vv] ? (String(v[vv]).indexOf(String(mergeParams[vv])) !== -1)
+                    : (String(v[vv]) === String(mergeParams[vv]))
+                )
               } else {
-                valids.push(v[vv] === mergeParams[vv])
+                valids.push(
+                  paramFuzzy[vv] ? (v[vv].indexOf(mergeParams[vv]) !== -1) : (v[vv] === mergeParams[vv])
+                )
               }
             })
             return valids.every(vvv => {
@@ -257,7 +263,7 @@
 
         requestObject.then(response => {
           let result = response
-          
+
           if (response && !(response instanceof Array)) {
             if (listField && listField.indexOf('.') !== -1) {
               listField.split('.').forEach(vv => {
@@ -281,7 +287,7 @@
           }
 
           let totalValue = response
-          if (response[totalField] && totalField && totalField.indexOf('.') !== -1) {
+          if (totalField && totalField.indexOf('.') !== -1) {
             totalField.split('.').forEach(vv => {
               totalValue = totalValue[vv]
             })
@@ -313,6 +319,8 @@
       }
     },
     mounted() {
+      // event: expand changed to `expand-change` in Element v2.x
+      this.$refs['table'].$on('expand', (row, expanded) => this.emitEventHandler('expand', row, expanded))
       const { type, autoLoad, data, formOptions, params } = this
       if (type === 'remote' && autoLoad) {
         if (formOptions) {

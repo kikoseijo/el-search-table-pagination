@@ -1,6 +1,6 @@
 
 <template>
-  <el-form :model="params" :inline="inline" ref="form"
+  <el-form :model="params" :inline="inline" ref="form" @submit.native.prevent="searchHandler()"
     :label-width="labelWidth ? (labelWidth + 'px') : ''">
     <el-form-item v-for="(form, index) in forms" :key="index"
       :prop="form.itemType != 'daterange' ? form.prop : (datePrefix + index)"
@@ -71,7 +71,7 @@
     name: 'ElSearchForm',
     props: formProps,
     data() {
-      const { forms } = this.$props
+      const { forms, fuzzy } = this.$props
       const datePrefix = 'daterange-prefix'
       const selectOptionPrefix = 'select-option-prefix'
       let dataObj = {
@@ -80,12 +80,15 @@
 
       let params = {}
       let format = {}
+      let fuzzyOps = {}
 
       forms.forEach((v, i) => {
         const propType = typeof v.prop
         if (propType === 'string') {
           v.modelValue = v.prop
           params[v.prop] = ''
+
+          fuzzyOps[v.prop] = v.fuzzy ? v.fuzzy : fuzzy
           if (v.format) {
             format[v.prop] = v.format
           }
@@ -95,6 +98,8 @@
             if (v.format) {
               format[vv] = v.format
             }
+
+            fuzzyOps[vv] = v.fuzzy ? v.fuzzy : fuzzy
           })
         }
         if (v.itemType === 'daterange') {
@@ -125,7 +130,8 @@
         datePrefix,
         selectOptionPrefix,
         ...dataObj,
-        format
+        format,
+        fuzzyOps
       }
     },
     computed: {
@@ -153,6 +159,9 @@
           }
         })
       },
+      getParamFuzzy() {
+        return this.fuzzyOps
+      },
       getParams(callback) {
         this.$refs['form'].validate(valid => {
           if (valid) {
@@ -173,7 +182,23 @@
         this.$refs['form'].resetFields()
       },
       changeDate(date, startDate, endDate) {
-        const dates = date.split(' - ')
+        let dates
+        if (date === null) {
+          this.params[startDate] = ''
+          this.params[endDate] = ''
+          return
+        }
+        if (typeof date === 'string') {
+          dates = date.split(' - ')
+        } else if (date && date.hasOwnProperty('length')) {
+          const firstDate = date[0]
+          const secondDate = date[1]
+          dates = [
+            `${firstDate.getFullYear()}-${('0' + (firstDate.getMonth() + 1)).substr(-2)}-${('0' + firstDate.getDate()).substr(-2)}`,
+            `${secondDate.getFullYear()}-${('0' + (secondDate.getMonth() + 1)).substr(-2)}-${('0' + secondDate.getDate()).substr(-2)}`
+          ]
+        }
+
         this.params[startDate] = dates[0]
         this.params[endDate] = dates[1]
       },
@@ -191,7 +216,7 @@
           }
 
           if (!result || !(result instanceof Array)) {
-            throw new Error(`The result of key:${resultField} is not Array. 接口返回的字段:${resultField} 不是一个数组`)
+            console.warn(`The result of key:${resultField} is not Array. 接口返回的字段:${resultField} 不是一个数组`)
           }
 
           if (this.resultHandler) {
